@@ -35,6 +35,13 @@ var Renderer = function(ctx, options) {
 	renderer.ctx = ctx;
 
 	this.objects = [];
+	this.textObject = {
+		'text': '',
+		'x': 0,
+		'y': 0
+	};
+
+	this.infoText = 'Use Arrow Keys to Move';
 
 	function clearCanvas() {
 		renderer.ctx.clearRect(0,0, options._max_width, options._max_height);
@@ -62,6 +69,28 @@ var Renderer = function(ctx, options) {
 				}
 			}
 		}
+		// draw any text 
+		ctx.fillStyle = '#999'
+		ctx.font = "42px monospace";
+		ctx.textBaseline = "middle";
+		ctx.textAlign = "center";
+ 		ctx.fillText(renderer.textObject.text, renderer.textObject.x, renderer.textObject.y);
+
+
+		// draw info text 
+		ctx.fillStyle = '#333'
+		ctx.font = "12px monospace";
+		ctx.textBaseline = "bottom";
+		ctx.textAlign = "right";
+ 		ctx.fillText(renderer.infoText, options._max_width-6, options._max_height-6);
+	}
+
+	this.setText = function(t) {
+		renderer.textObject = t;
+	}
+
+	this.setInfoText = function(t) {
+		renderer.infoText = t;
 	}
 
 }
@@ -78,8 +107,14 @@ var Game = function() {
 	game._width = 20;
 	game._height = 20;
 
+	game._score = 0;
+	game._score_inc = 1;
+
 	game._player_square_length	= 24;
 	game._player_color 			= '#e2e2e2';
+	game._apple_color 			= '#FFD0D0';
+
+	game._interaction = false;
 
 	var renderOptions = {};
 
@@ -92,10 +127,28 @@ var Game = function() {
 
 	var renderer = new Renderer(game_context, renderOptions);
 
-	this.max_speed 		= 1000;
+	this.max_speed 		= 750;
 	this.min_speed 		= 50;
 	this.speed_modifier = 50;
 	this.game_speed 	= this.max_speed;
+
+
+	this.showText = function(text) {
+		
+		renderer.setText({
+			'text': text,
+			'x': renderOptions._max_width/2,
+			'y': renderOptions._max_height/2, 
+		});
+	}
+
+
+	this.score = function() {
+		game._score += game._score_inc;
+		if((game.game_speed - game.speed_modifier) >= game.min_speed) {
+			game.game_speed -= game.speed_modifier;
+		}
+	}
 
 	this.statuses = function() {
 		return {
@@ -108,8 +161,17 @@ var Game = function() {
 	}
 
 	this.status = function(s) {
+
 		if(s != null & s!= undefined && game.statuses().hasOwnProperty(s)) {
 			game._status = game.statuses()[s];
+
+			if(s == 'PAUSED') {
+				game.showText('PAUSED');
+			}else if(s == 'STOPPED') {
+				game.showText('GAME OVER :(');
+			}else{
+				game.showText('');
+			}
 		}
 		return game._status;
 	}
@@ -159,6 +221,13 @@ var Game = function() {
 				ghost.y = game._height; 
 			}
 
+			if(ghost.x == apple.blocks[0].x && ghost.y == apple.blocks[0].y) {
+				//eat the apple.
+				apple.move();
+				self.grow();
+				game.score();
+			}
+
 			//collision check the ghost.
 			for(var i = 0; i < self.blocks.length; i++) {
 				if(ghost.x == self.blocks[i].x && ghost.y == self.blocks[i].y) {
@@ -200,22 +269,52 @@ var Game = function() {
 
 		this.keyListener = function() {
 			document.onkeydown = function(e) {
+				game._interaction = true;
 				e = e || window.event;
 				switch(e.which || e.keyCode) {
 					case directions['left']: 
-						self.direction = directions['left'];
+						if(game.status() == game.statuses()['RUNNING'] && self.direction != directions['right']) {
+							self.direction = directions['left'];
+						}
 			        break;
 
 			        case directions['up']:
-			        	self.direction = directions['up'];
+						if(game.status() == game.statuses()['RUNNING'] && self.direction != directions['down']) {
+							self.direction = directions['up'];
+						}
 			        break;
 
 			        case directions['right']: 
-			        	self.direction = directions['right'];
+						if(game.status() == game.statuses()['RUNNING'] && self.direction != directions['left']) {
+							self.direction = directions['right'];
+						}
 			        break;
 
 			        case directions['down']: 
-			        	self.direction = directions['down'];
+						if(game.status() == game.statuses()['RUNNING'] && self.direction != directions['up']) {
+							self.direction = directions['down'];
+						}
+			        break;
+
+			        case 27: // esc key pressed
+			        	if(game.status() == game.statuses()['RUNNING']) {
+			        		game.status('PAUSED');
+			        	}else if(game.status() == game.statuses()['PAUSED']) {
+			        		game.status('RUNNING');
+			        	}
+			        break;
+
+			        case 32: // space key pressed
+			        	if(game.status() == game.statuses()['STOPPED'] || game.status() == game.statuses()['NOT_STARTED']) {
+			        		player = new Snake();
+			        		renderer.objects = [];
+			        		apple = new Apple();
+							renderer.objects.push(player);
+							renderer.objects.push(apple);
+							game.game_speed = game.max_speed;
+							game._score = 0;
+			        		game.status('RUNNING');
+			        	}
 			        break;
 
 			        default: return; // exit this handler for other keys
@@ -228,11 +327,38 @@ var Game = function() {
 	}
 
 
+	var Apple = function() {
+
+		var self = this;
+
+		this.blocks = [{x:16, y:16}];
+
+		this.move = function() {
+			this.blocks = [];			
+			this.blocks = [{x: Math.floor((Math.random() * 20) + 1), y: Math.floor((Math.random() * 20) + 1)}];			
+		}
+
+		this.render = function() {
+			return self.blocks.map(function(item) {
+				return {
+					'x': item.x,
+					'y': item.y,
+					'width': game._player_square_length,
+					'height': game._player_square_length,
+					'fillStyle': game._apple_color
+				};
+			});
+		}
+
+	}
+
 	this._delta_time = Date.now();
 
 
 	var player = new Snake();
+	var apple = new Apple();
 	renderer.objects.push(player);
+	renderer.objects.push(apple);
 
 	this.gameLoop = function() {
 
@@ -241,13 +367,16 @@ var Game = function() {
 		// if the game is running
 		if(game.status() == game.statuses()['RUNNING']) {
 
+			if(game._score > 0 || game._interaction != false) {
+				renderer.setInfoText('score:  ' +game._score);
+			}
+
 			if( (Date.now() - game._delta_time) >= game.game_speed) {
 
 				try{
 					player.move();
 				}
 				catch(e) {
-					console.log(e);
 					game.status('STOPPED');
 				}	
 
