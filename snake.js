@@ -127,9 +127,9 @@ var Game = function() {
 
 	var renderer = new Renderer(game_context, renderOptions);
 
-	this.max_speed 		= 750;
+	this.max_speed 		= 400;
 	this.min_speed 		= 50;
-	this.speed_modifier = 50;
+	this.speed_modifier = 25;
 	this.game_speed 	= this.max_speed;
 
 
